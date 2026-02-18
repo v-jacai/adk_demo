@@ -11,7 +11,11 @@ from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
 
+from .custom_model import get_custom_model_for_adk
 from .tools_local import safe_calc, orchestrator_stamp
+
+# One custom model (google-genai 1.63.0) used by all agents
+_custom_model = get_custom_model_for_adk()
 
 
 def finalize_report(run_id: str, math_result: Dict[str, Any], text_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,7 +31,7 @@ def finalize_report(run_id: str, math_result: Dict[str, Any], text_result: Dict[
 # -------- Sub-agent 1: math agent (calls local tool safe_calc) --------
 math_agent = LlmAgent(
     name="math_agent",
-    model="gemini-3-flash-preview",
+    model=_custom_model,
     description="Handles calculations precisely using a calculator tool.",
     instruction=(
         "You are a math helper. Always use the tool `safe_calc` to compute. "
@@ -42,7 +46,7 @@ MCP_SERVER_PATH = str(HERE / "mcp_server.py")
 
 mcp_text_agent = LlmAgent(
     name="mcp_text_agent",
-    model="gemini-3-flash-preview",
+    model=_custom_model,
     description="Transforms text using MCP tools (reverse_text, slugify).",
     instruction=(
         "You are a text transformer. "
@@ -66,7 +70,7 @@ mcp_text_agent = LlmAgent(
 # -------- Orchestrator (root_agent): delegates + calls its own tools --------
 root_agent = LlmAgent(
     name="orchestrator_agent",
-    model="gemini-3-flash-preview",
+    model=_custom_model,
     description="Orchestrates tasks across math_agent and mcp_text_agent, then finalizes a report.",
     instruction=(
         "You are the orchestrator. Goal: produce a final JSON report.\n"
