@@ -1,3 +1,4 @@
 google-genai==1.63.0
 google-adk
 mcp
+python-dotenv

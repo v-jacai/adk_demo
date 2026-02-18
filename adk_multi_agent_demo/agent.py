@@ -1,25 +1,78 @@
+"""ADK multi-agent demo: orchestrator + math agent + MCP text agent."""
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
+# -----------------------------------------------------------------------------
+# Env & imports
+# -----------------------------------------------------------------------------
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
+from google import genai
 from google.adk.agents import LlmAgent
+from google.adk.models.google_llm import Gemini
 from google.adk.tools import AgentTool
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
 
-from .custom_model import get_custom_model_for_adk
 from .tools_local import safe_calc, orchestrator_stamp
 
-# One custom model (google-genai 1.63.0) used by all agents
-_custom_model = get_custom_model_for_adk()
+if TYPE_CHECKING:
+    from google.genai import Client
+
+# -----------------------------------------------------------------------------
+# Paths & config
+# -----------------------------------------------------------------------------
+_HERE = Path(__file__).resolve().parent
+MCP_SERVER_PATH = str(_HERE / "mcp_server.py")
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+# -----------------------------------------------------------------------------
+# Shared model (GeminiWithClient + singleton)
+# -----------------------------------------------------------------------------
 
 
-def finalize_report(run_id: str, math_result: Dict[str, Any], text_result: Dict[str, Any]) -> Dict[str, Any]:
-    """Orchestrator tool: merge sub-agent outputs into a single result."""
+class GeminiWithClient(Gemini):
+    """ADK Gemini backed by genai.Client. Use as LlmAgent(model=...)."""
+    client: Optional[Any] = None
+
+    @property
+    def api_client(self) -> "Client":
+        if self.client is not None:
+            return self.client
+        from google.genai import Client
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        return Client(api_key=api_key)
+
+
+def _shared_model() -> GeminiWithClient:
+    """Single model instance for all agents."""
+    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key) if api_key else None
+    return GeminiWithClient(model=DEFAULT_MODEL, client=client)
+
+
+_model = _shared_model()
+
+# -----------------------------------------------------------------------------
+# Orchestrator-only tools
+# -----------------------------------------------------------------------------
+
+
+def finalize_report(
+    run_id: str,
+    math_result: Dict[str, Any],
+    text_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Merge sub-agent outputs into one report. Called by orchestrator."""
     return {
         "status": "ok",
         "run_id": run_id,
@@ -28,10 +81,13 @@ def finalize_report(run_id: str, math_result: Dict[str, Any], text_result: Dict[
     }
 
 
-# -------- Sub-agent 1: math agent (calls local tool safe_calc) --------
+# -----------------------------------------------------------------------------
+# Sub-agents
+# -----------------------------------------------------------------------------
+
 math_agent = LlmAgent(
     name="math_agent",
-    model=_custom_model,
+    model=_model,
     description="Handles calculations precisely using a calculator tool.",
     instruction=(
         "You are a math helper. Always use the tool `safe_calc` to compute. "
@@ -40,37 +96,36 @@ math_agent = LlmAgent(
     tools=[safe_calc],
 )
 
-# -------- Sub-agent 2: mcp text agent (calls MCP tools via McpToolset) --------
-HERE = Path(__file__).resolve().parent
-MCP_SERVER_PATH = str(HERE / "mcp_server.py")
+_mcp_toolset = McpToolset(
+    connection_params=StdioConnectionParams(
+        server_params=StdioServerParameters(
+            command=sys.executable,
+            args=[MCP_SERVER_PATH],
+            env=os.environ.copy(),
+        )
+    ),
+    tool_filter=["reverse_text", "slugify"],
+)
 
 mcp_text_agent = LlmAgent(
     name="mcp_text_agent",
-    model=_custom_model,
+    model=_model,
     description="Transforms text using MCP tools (reverse_text, slugify).",
     instruction=(
         "You are a text transformer. "
         "Use MCP tools when needed: reverse_text(text), slugify(text). "
         "Return ONLY the tool output."
     ),
-    tools=[
-        McpToolset(
-            connection_params=StdioConnectionParams(
-                server_params=StdioServerParameters(
-                    command=sys.executable,
-                    args=[MCP_SERVER_PATH],
-                    env=os.environ.copy(),
-                )
-            ),
-            tool_filter=["reverse_text", "slugify"],
-        )
-    ],
+    tools=[_mcp_toolset],
 )
 
-# -------- Orchestrator (root_agent): delegates + calls its own tools --------
+# -----------------------------------------------------------------------------
+# Root agent (orchestrator)
+# -----------------------------------------------------------------------------
+
 root_agent = LlmAgent(
     name="orchestrator_agent",
-    model=_custom_model,
+    model=_model,
     description="Orchestrates tasks across math_agent and mcp_text_agent, then finalizes a report.",
     instruction=(
         "You are the orchestrator. Goal: produce a final JSON report.\n"

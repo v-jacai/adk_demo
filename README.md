@@ -40,7 +40,7 @@ Then open http://localhost:8000
 
 All agents use one **custom model** built with google-genai 1.63.0 and ADK’s Gemini integration:
 
-- **Default**: base model `gemini-2.5-flash` with retry options (see `adk_multi_agent_demo/custom_model.py`).
+- **Default**: base model `gemini-2.5-flash` with retry options (see `GeminiWithClient` in `adk_multi_agent_demo/agent.py`).
 - **Override**: set `ADK_CUSTOM_MODEL` in `.env` to a different model ID (e.g. a tuned model name).
 - **Create a tuned model**: run the script (requires `GOOGLE_API_KEY`), then set `ADK_CUSTOM_MODEL` to the printed model name:
 
