@@ -1,17 +1,14 @@
-"""ADK multi-agent demo: orchestrator + math agent + MCP text agent."""
+"""Vista AI ADK app: root agent + sub-agents (demo: orchestrator + math + MCP text)."""
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-# -----------------------------------------------------------------------------
-# Env & imports
-# -----------------------------------------------------------------------------
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    _repo_root = Path(__file__).resolve().parent.parent.parent
+    load_dotenv(_repo_root / ".env")
 except ImportError:
     pass
 
@@ -19,29 +16,18 @@ from google import genai
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.adk.tools import AgentTool
-from google.adk.tools.mcp_tool import McpToolset
-from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
-from mcp import StdioServerParameters
 
-from .tools_local import safe_calc, orchestrator_stamp
+from .mcp import get_mcp_toolset
+from .tools import finalize_report, orchestrator_stamp, safe_calc
 
 if TYPE_CHECKING:
     from google.genai import Client
 
-# -----------------------------------------------------------------------------
-# Paths & config
-# -----------------------------------------------------------------------------
-_HERE = Path(__file__).resolve().parent
-MCP_SERVER_PATH = str(_HERE / "mcp_server.py")
 DEFAULT_MODEL = "gemini-2.5-flash"
-
-# -----------------------------------------------------------------------------
-# Shared model (GeminiWithClient + singleton)
-# -----------------------------------------------------------------------------
 
 
 class GeminiWithClient(Gemini):
-    """ADK Gemini backed by genai.Client. Use as LlmAgent(model=...)."""
+    """ADK Gemini backed by genai.Client."""
     client: Optional[Any] = None
 
     @property
@@ -54,36 +40,12 @@ class GeminiWithClient(Gemini):
 
 
 def _shared_model() -> GeminiWithClient:
-    """Single model instance for all agents."""
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key) if api_key else None
     return GeminiWithClient(model=DEFAULT_MODEL, client=client)
 
 
 _model = _shared_model()
-
-# -----------------------------------------------------------------------------
-# Orchestrator-only tools
-# -----------------------------------------------------------------------------
-
-
-def finalize_report(
-    run_id: str,
-    math_result: Dict[str, Any],
-    text_result: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Merge sub-agent outputs into one report. Called by orchestrator."""
-    return {
-        "status": "ok",
-        "run_id": run_id,
-        "math": math_result,
-        "text": text_result,
-    }
-
-
-# -----------------------------------------------------------------------------
-# Sub-agents
-# -----------------------------------------------------------------------------
 
 math_agent = LlmAgent(
     name="math_agent",
@@ -96,17 +58,6 @@ math_agent = LlmAgent(
     tools=[safe_calc],
 )
 
-_mcp_toolset = McpToolset(
-    connection_params=StdioConnectionParams(
-        server_params=StdioServerParameters(
-            command=sys.executable,
-            args=[MCP_SERVER_PATH],
-            env=os.environ.copy(),
-        )
-    ),
-    tool_filter=["reverse_text", "slugify"],
-)
-
 mcp_text_agent = LlmAgent(
     name="mcp_text_agent",
     model=_model,
@@ -116,12 +67,8 @@ mcp_text_agent = LlmAgent(
         "Use MCP tools when needed: reverse_text(text), slugify(text). "
         "Return ONLY the tool output."
     ),
-    tools=[_mcp_toolset],
+    tools=[get_mcp_toolset()],
 )
-
-# -----------------------------------------------------------------------------
-# Root agent (orchestrator)
-# -----------------------------------------------------------------------------
 
 root_agent = LlmAgent(
     name="orchestrator_agent",

@@ -1,3 +1,4 @@
+"""MCP server (stdio): entry point for ADK subprocess. Do not print to stdout."""
 from __future__ import annotations
 
 import re
@@ -22,7 +23,6 @@ def slugify(text: str) -> str:
 
 
 def main() -> None:
-    # IMPORTANT: stdio servers must not print to stdout.
     mcp.run(transport="stdio")
 
 

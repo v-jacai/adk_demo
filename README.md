@@ -1,54 +1,37 @@
-# Google ADK Multi-Agent Demo (Orchestrator + 2 Sub Agents + MCP Tool)
+# Vista AI
 
-## What you get
-- 1 orchestrator agent (root_agent)
-- 2 sub agents
-- all 3 agents call tools
-- 1 sub agent calls an MCP server via ADK McpToolset (stdio)
+Google ADK project: natural language → chart/dashboard (future). Current: multi-agent demo (orchestrator + math + MCP text).
 
-## Install
+## Directory layout (best practice)
+
+```
+vista-ai/
+├── agents/                    # ADK agents_dir (one app per subdir)
+│   ├── README.md
+│   └── vista_ai/              # Vista AI app
+│       ├── __init__.py
+│       ├── agent.py           # root_agent + sub_agents
+│       ├── tools/             # ADK tools
+│       ├── mcp/               # MCP client config
+│       └── mcp_server.py
+├── config.py                  # Env and tuning
+├── services/                  # Shared logic (placeholder)
+├── storage/                   # Document + vector (placeholder)
+├── data_sources/              # Data source abstraction (placeholder)
+├── models/                    # DTOs (placeholder)
+├── schema_cache/             # Vista schema (placeholder)
+├── requirements.txt
+└── README.md
+```
+
+## Run (from repo root)
+
+- **Web:** `adk web agents --port 8000` → choose **vista_ai**
+- **CLI:** `adk run agents/vista_ai`
+
+## Setup
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
+# Set GOOGLE_API_KEY or GEMINI_API_KEY in .env
 ```
-
-Requirements pin **google-genai==1.63.0** for the custom model integration; `google-adk` and `mcp` are also included.
-
-## Configure
-Copy `.env.example` to `.env` and fill your key:
-```bash
-cp .env.example .env
-```
-
-## Run (CLI)
-From this repo root:
-```bash
-adk run adk_multi_agent_demo
-```
-
-Example prompt:
-- 计算 ((3+5)*2)/4，然后把文本 'Hello ADK MCP' 做 slugify 并 reverse，最后合并结果。
-
-## Run (Web)
-```bash
-adk web --port 8000
-```
-Then open http://localhost:8000
-
-## Custom model (google-genai 1.63.0)
-
-All agents use one **custom model** built with google-genai 1.63.0 and ADK’s Gemini integration:
-
-- **Default**: base model `gemini-2.5-flash` with retry options (see `GeminiWithClient` in `adk_multi_agent_demo/agent.py`).
-- **Override**: set `ADK_CUSTOM_MODEL` in `.env` to a different model ID (e.g. a tuned model name).
-- **Create a tuned model**: run the script (requires `GOOGLE_API_KEY`), then set `ADK_CUSTOM_MODEL` to the printed model name:
-
-```bash
-export GOOGLE_API_KEY=your_key
-python scripts/create_custom_tuned_model.py
-# Then add ADK_CUSTOM_MODEL=tunedModels/... to .env
-```
-
-## Notes
-- MCP server runs as a child process over stdio; do not print to stdout inside `mcp_server.py`.

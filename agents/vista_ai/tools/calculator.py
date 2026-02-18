@@ -1,14 +1,9 @@
+"""Safe calculator tool for math expressions."""
 from __future__ import annotations
 
 import math
 import re
 from typing import Dict, Any
-
-
-def orchestrator_stamp(run_id: str) -> Dict[str, Any]:
-    """A tiny tool to prove orchestrator also calls a tool."""
-    return {"status": "ok", "run_id": run_id}
-
 
 _ALLOWED = {
     "abs": abs,
@@ -42,7 +37,6 @@ def safe_calc(expr: str) -> Dict[str, Any]:
         return {"status": "error", "error": "disallowed token"}
 
     try:
-        # Evaluate with restricted globals/locals
         val = eval(expr, {"__builtins__": {}}, _ALLOWED)  # noqa: S307 (demo)
         return {"status": "ok", "expression": expr, "result": val}
     except Exception as e:
